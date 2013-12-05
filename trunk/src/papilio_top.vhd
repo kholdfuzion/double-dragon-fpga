@@ -86,7 +86,7 @@ architecture RTL of PAPILIO_TOP is
 	signal pcm0					: std_logic_vector(11 downto 0) := (others => '0');
 	signal pcm1					: std_logic_vector(11 downto 0) := (others => '0');
 
-	signal clk3M7				: std_logic := '0';
+	signal clk3M57				: std_logic := '0';
 
 	signal clk48M				: std_logic := '0';
 	signal clk12M				: std_logic := '0';
@@ -166,7 +166,7 @@ begin
 	-- other options would be to divide the external FPGA clock directly
 	-- some typical platform clocks are 32M/9=3.555Mhz or 50M/14=3.571Mhz
 	--------------------------------------------------------------------
-	clk3M7  <= clkdiv2(3);
+	clk3M57  <= clkdiv2(3);
 	p_clk3M58 : process(clk48M, reset)
 	begin
 		if (reset = '1') then
@@ -184,11 +184,11 @@ begin
 	-- left D/A converter
 	----------------------------------------------
 	dacl : entity work.dac
-	generic map (msbi_g => 11)
+	generic map (msbi_g => 9)
 	port map (
 		clk_i  => clk12M,
 		res_i  => reset,
-		dac_i  => pcm0,
+		dac_i  => pcm0(11 downto 2),
 		dac_o  => pwm_l
 	);
 
@@ -196,11 +196,11 @@ begin
 	-- right D/A converter
 	----------------------------------------------
 	dacr : entity work.dac
-	generic map (msbi_g => 11)
+	generic map (msbi_g => 9)
 	port map (
 		clk_i  => clk12M,
 		res_i  => reset,
-		dac_i  => pcm1,
+		dac_i  => pcm1(11 downto 2),
 		dac_o  => pwm_r
 	);
 
@@ -219,7 +219,7 @@ begin
 		-- inputs
 		reset => reset,		-- active high reset
 		hclk  => clk1M5,		-- CPU clock 1.5MHz
-		yclk  => clk3M7,		-- FM synth clock (3.579545MHz)
+		yclk  => clk3M57,		-- FM synth clock (3.579545MHz)
 		db    => key_val,		-- sound to play
 		wr_n  => key_strobe	-- latch sound value on rising edge
 	);
