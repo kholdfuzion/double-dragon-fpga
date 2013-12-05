@@ -1,0 +1,40 @@
+# RESET
+K FF
+K FF
+W 200 us
+# Press ESC
+K 76
+K F0
+K 76
+W 100 us
+# Press RET
+K 5A
+K F0
+K 5A
+W 100 us
+# Press down arrow
+K 72
+K F0
+K 72
+W 100 us
+# Press RET
+K 5A
+K F0
+K 5A
+W 200 us
+# Press 8
+K 3E
+K F0
+K 3E
+W 100 us
+# Press 0
+K 45
+K F0
+K 45
+W 100 us
+# Press RET
+K 5A
+K F0
+K 5A
+W 100 us
+E
