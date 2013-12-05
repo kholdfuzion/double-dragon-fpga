@@ -14,7 +14,7 @@
 --	Top level targeted for Papilio Plus board, basic h/w specs:
 --		Spartan 6 LX9
 --		32Mhz xtal oscillator
---		256Kx16 SRAM 10ns access
+--		512Kx16 SRAM 10ns access
 --		4Mbit serial Flash
 --
 
@@ -77,10 +77,11 @@ architecture RTL of PAPILIO_TOP is
 	signal venable				: std_logic := '0';
 
 	signal clkfb				: std_logic := '0';
-	signal clkdiv				: std_logic_vector( 1 downto 0) := (others => '0');
+	signal clkdiv				: std_logic_vector( 4 downto 0) := (others => '0');
 
 	signal clk48M				: std_logic := '0';
 	signal clk12M				: std_logic := '0';
+	signal clk1M5				: std_logic := '0';
 
 begin
 --	IO pin assignments
@@ -140,6 +141,7 @@ begin
 	-- allow clock to run ahead of reset deasserting
 	----------------------------------------------
 	clk12M  <= clkdiv(1);
+	clk1M5  <= clkdiv(4);
 
 	p_clk48 : process(clk48M, dcm_locked)
 	begin
@@ -164,7 +166,7 @@ begin
 
 		-- inputs
 		reset => reset,		-- active high reset
-		hclk  => '0',			-- CPU clock 1.5MHz
+		hclk  => clk1M5,		-- CPU clock 1.5MHz
 		yclk  => '0',			-- FM synth clock (3.579545MHz)
 		db    => key_val,		-- sound to play
 		wr_n  => key_strobe	-- latch sound value on rising edge

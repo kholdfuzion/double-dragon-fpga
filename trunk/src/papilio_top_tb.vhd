@@ -4,8 +4,8 @@
 --
 -- Create Date:   2013-12-01 19:22:05
 -- Design Name:   
--- Module Name:   papilio_pro_top_tb.vhd
--- Project Name:  papilio_pro_top
+-- Module Name:   papilio_top_tb.vhd
+-- Project Name:  papilio_top
 -- Target Device:  
 -- Tool versions:  
 -- Description:   
@@ -28,10 +28,10 @@ library ieee;
 --	use ieee.numeric_std.all;
 	use ieee.std_logic_textio.all;
 
-entity papilio_pro_top_tb is
-end papilio_pro_top_tb;
+entity papilio_top_tb is
+end papilio_top_tb;
  
-architecture behavior of papilio_pro_top_tb is 
+architecture behavior of papilio_top_tb is 
 
 	--Inputs
 	signal I_RESET   : std_logic := '1';

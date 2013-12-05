@@ -1,7 +1,7 @@
 # RESET
 K FF
 K FF
-W 200 us
+W 2 ms
 # Press ESC
 K 76
 K F0
