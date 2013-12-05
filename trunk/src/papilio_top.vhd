@@ -67,6 +67,9 @@ architecture RTL of PAPILIO_TOP is
 	signal vga_hs				: std_logic := '1';
 	signal vga_vs				: std_logic := '1';
 
+	signal pwm_l				: std_logic := '1';
+	signal pwm_r				: std_logic := '1';
+
 	signal reset				: std_logic := '1';
 	signal dcm_reset			: std_logic := '1';
 	signal dcm_locked			: std_logic := '1';
@@ -78,6 +81,12 @@ architecture RTL of PAPILIO_TOP is
 
 	signal clkfb				: std_logic := '0';
 	signal clkdiv				: std_logic_vector( 4 downto 0) := (others => '0');
+	signal clkdiv2				: std_logic_vector( 3 downto 0) := (others => '0');
+
+	signal pcm0					: std_logic_vector(11 downto 0) := (others => '0');
+	signal pcm1					: std_logic_vector(11 downto 0) := (others => '0');
+
+	signal clk3M7				: std_logic := '0';
 
 	signal clk48M				: std_logic := '0';
 	signal clk12M				: std_logic := '0';
@@ -85,16 +94,16 @@ architecture RTL of PAPILIO_TOP is
 
 begin
 --	IO pin assignments
+	O_LED			<= (others=>'0');
+
 	O_VIDEO_R	<= vga_r;
 	O_VIDEO_G	<= vga_g;
 	O_VIDEO_B	<= vga_b;
 	O_HSYNC		<= vga_hs;
 	O_VSYNC		<= vga_vs;
 
-	-- just default assignments for now - maybe we'll use these later?
-	O_LED			<= (others=>'0');
-	O_AUDIO_L	<= '0';
-	O_AUDIO_R	<= '0';
+	O_AUDIO_L	<= pwm_l;
+	O_AUDIO_R	<= pwm_r;
 
 	dcm_reset		<= I_RESET;
 
@@ -152,14 +161,57 @@ begin
 		end if;
 	end process;
 
+	--------------------------------------------------------------------
+	-- this needs to be 3.579545MHz but we end up with 48M/13=3.69M
+	-- other options would be to divide the external FPGA clock directly
+	-- some typical platform clocks are 32M/9=3.555Mhz or 50M/14=3.571Mhz
+	--------------------------------------------------------------------
+	clk3M7  <= clkdiv2(3);
+	p_clk3M58 : process(clk48M, reset)
+	begin
+		if (reset = '1') then
+			clkdiv2 <= (others=>'0');
+		elsif rising_edge(clk48M) then
+			if clkdiv2 = "1100" then
+				clkdiv2 <= (others=>'0');
+			else
+				clkdiv2 <= clkdiv2 + 1;
+			end if;
+		end if;
+	end process;
+
+	----------------------------------------------
+	-- left D/A converter
+	----------------------------------------------
+	dacl : entity work.dac
+	generic map (msbi_g => 11)
+	port map (
+		clk_i  => clk12M,
+		res_i  => reset,
+		dac_i  => pcm0,
+		dac_o  => pwm_l
+	);
+
+	----------------------------------------------
+	-- right D/A converter
+	----------------------------------------------
+	dacr : entity work.dac
+	generic map (msbi_g => 11)
+	port map (
+		clk_i  => clk12M,
+		res_i  => reset,
+		dac_i  => pcm1,
+		dac_o  => pwm_r
+	);
+
 	----------------------------------------------
 	-- sound module
 	----------------------------------------------
 	dd_snd : entity work.dd_snd
 	port map (
 		-- two PCM channel outputs
-		pcm0  => open,			-- not implemented
-		pcm1  => open,			-- not implemented
+		pcm0  => pcm0,
+		pcm1  => pcm1,
 		-- two FM channel outputs
 		ym0   => open,			-- not implemented
 		ym1   => open,			-- not implemented
@@ -167,7 +219,7 @@ begin
 		-- inputs
 		reset => reset,		-- active high reset
 		hclk  => clk1M5,		-- CPU clock 1.5MHz
-		yclk  => '0',			-- FM synth clock (3.579545MHz)
+		yclk  => clk3M7,		-- FM synth clock (3.579545MHz)
 		db    => key_val,		-- sound to play
 		wr_n  => key_strobe	-- latch sound value on rising edge
 	);
