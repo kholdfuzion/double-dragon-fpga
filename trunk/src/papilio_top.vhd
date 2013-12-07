@@ -17,12 +17,15 @@
 --		512Kx16 SRAM 10ns access
 --		4Mbit serial Flash
 --
+--	adpcm samples stored in external memory
+--	0x00000, 64KB, file "21j-6"
+--	0x10000, 64KB, file "21j-7"
 
 library ieee;
 	use ieee.std_logic_1164.all;
-	use ieee.std_logic_arith.all;
+--	use ieee.std_logic_arith.all;
 	use ieee.std_logic_unsigned.all;
-	use ieee.numeric_std.all;
+--	use ieee.numeric_std.all;
 
 library unisim;
 	use unisim.vcomponents.all;
@@ -30,6 +33,15 @@ library unisim;
 entity PAPILIO_TOP is
 	port(
 		I_RESET		: in		std_logic;								-- active high reset
+
+		-- SRAM
+		SRAM_A		: out		std_logic_vector(18 downto 0);	-- SRAM address bus
+		SRAM_D		: in		std_logic_vector(15 downto 0);	-- SRAM data    bus
+		SRAM_nCS		: out		std_logic;								-- SRAM chip    select active low
+		SRAM_nWE		: out		std_logic;								-- SRAM write   enable active low
+		SRAM_nOE		: out		std_logic;								-- SRAM output  enable active low
+		SRAM_nBHE	: out		std_logic;								-- SRAM byte hi enable active low
+		SRAM_nBLE	: out		std_logic;								-- SRAM byte lo enable active low
 
 		-- debugging
 		O_LED			: out		std_logic_vector(3 downto 0);
@@ -92,9 +104,22 @@ architecture RTL of PAPILIO_TOP is
 	signal clk12M				: std_logic := '0';
 	signal clk1M5				: std_logic := '0';
 
+	signal rom0a				: std_logic_vector(15 downto 0) := (others => '0');
+	signal rom1a				: std_logic_vector(15 downto 0) := (others => '0');
+	signal rom0d				: std_logic_vector( 7 downto 0) := (others => '0');
+	signal rom1d				: std_logic_vector( 7 downto 0) := (others => '0');
+
+	signal read_state			: std_logic_vector( 1 downto 0) := (others => '0');
+
 begin
 --	IO pin assignments
 	O_LED			<= (others=>'0');
+
+	SRAM_nCS		<= '0'; -- always selected
+	SRAM_nWE		<= '1'; -- not written
+	SRAM_nOE		<= '0'; -- output enabled
+	SRAM_nBHE	<= '0'; -- hi byte always enabled
+	SRAM_nBLE	<= '0'; -- lo byte always enabled
 
 	O_VIDEO_R	<= vga_r;
 	O_VIDEO_G	<= vga_g;
@@ -216,13 +241,54 @@ begin
 		ym0   => open,			-- not implemented
 		ym1   => open,			-- not implemented
 
-		-- inputs
+		-- interface to external ROMs
+		rom0a => rom0a,
+		rom0d => rom0d,
+		rom1a => rom1a,
+		rom1d => rom1d,
+
 		reset => reset,		-- active high reset
 		hclk  => clk1M5,		-- CPU clock 1.5MHz
 		yclk  => clk3M57,		-- FM synth clock (3.579545MHz)
 		db    => key_val,		-- sound to play
 		wr_n  => key_strobe	-- latch sound value on rising edge
 	);
+
+	----------------------------------------------
+	-- read external memory simulating two independent
+	-- memories and demux data bus accordingly
+	----------------------------------------------
+	ext_mem : process
+	begin
+		wait until rising_edge(clk1M5);
+		read_state <= read_state + 1;
+		case read_state is
+			-- adpd0 memory address
+			when "00" =>
+				SRAM_A <= "0000" & rom0a(15 downto 1);
+
+			-- demux 16 bit data bus to 8 bit
+			when "01" =>
+				if rom0a(0) = '1' then
+					rom0d <= SRAM_D( 7 downto  0);
+				else
+					rom0d <= SRAM_D(15 downto  8);
+				end if;
+
+			-- adpd1 memory address
+			when "10" =>
+				SRAM_A    <= "0001" & rom1a(15 downto 1);
+
+			-- demux 16 bit data bus to 8 bit
+			when "11" =>
+				if rom1a(0) = '1' then
+					rom1d <= SRAM_D( 7 downto  0);
+				else
+					rom1d <= SRAM_D(15 downto  8);
+				end if;
+			when others => null;
+		end case;
+	end process;
 
 	----------------------------------------------
 	-- video for debugging

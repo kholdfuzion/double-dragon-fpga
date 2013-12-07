@@ -12,7 +12,18 @@
 
 --------------------------------------------------------------------------------
 --	Double Dragon sound board implementation
+--
+-- 1x 68A09 CPU 1.5MHz
+-- 1x  2KB RAM
+-- 1x 32KB ROM
+-- 2x 64KB ROM for ADPCM samples
+-- 2x MSM5205 ADPCM decoder
+-- 1x YM2151 FM synth
+-- 1x YM3012 stereo DAC
 
+--	adpcm samples stored in external memory
+--	0x00000, 64KB, file "21j-6"
+--	0x10000, 64KB, file "21j-7"
 
 library ieee;
 	use ieee.std_logic_1164.all;
@@ -25,6 +36,11 @@ entity dd_snd is
 		ym0		: out	std_logic_vector( 9 downto 0);	-- left  channel from IC82
 		ym1		: out	std_logic_vector( 9 downto 0);	-- right channel from IC82
 
+		rom0a		: out	std_logic_vector(15 downto 0);	-- ADPCM ROM0 address
+		rom0d		: in 	std_logic_vector( 7 downto 0);	-- ADPCM ROM0 data
+		rom1a		: out	std_logic_vector(15 downto 0);	-- ADPCM ROM1 address
+		rom1d		: in  std_logic_vector( 7 downto 0);	-- ADPCM ROM1 data
+
 		db			: in	std_logic_vector( 7 downto 0);	-- data bus
 		reset		: in	std_logic;								-- active high reset
 		hclk		: in	std_logic;								-- cpu clock 1.5MHz
@@ -34,9 +50,14 @@ entity dd_snd is
 end dd_snd;
 
 architecture RTL of dd_snd is
+	signal clk375k				: std_logic := '0';
+
+	signal vck0					: std_logic := '0';
+	signal vck1					: std_logic := '0';
 
 	signal last_wr_n			: std_logic := '0';
 
+	signal clk_ctr				: std_logic_vector( 1 downto 0) := (others => '0');
 	signal snd_val				: std_logic_vector( 7 downto 0) := (others => '0');
 	signal mpu_di				: std_logic_vector( 7 downto 0) := (others => '0');
 	signal mpu_do				: std_logic_vector( 7 downto 0) := (others => '0');
@@ -58,6 +79,15 @@ architecture RTL of dd_snd is
 	signal ram_do				: std_logic_vector( 7 downto 0) := (others => '0');
 	signal ym_do				: std_logic_vector( 7 downto 0) := (others => '0');
 
+	signal adpd0_di			: std_logic_vector( 3 downto 0) := (others => '0');
+	signal adpd1_di			: std_logic_vector( 3 downto 0) := (others => '0');
+	signal adpd0_addr			: std_logic_vector(16 downto 0) := (others => '0');
+	signal adpd1_addr			: std_logic_vector(16 downto 0) := (others => '0');
+	signal ad1rst				: std_logic := '0';
+	signal ad2rst				: std_logic := '0';
+	signal ad1match			: std_logic := '0';
+	signal ad2match			: std_logic := '0';
+
 	signal ic79_dec0			: std_logic := '0';
 --	signal ic79_dec1			: std_logic := '0';
 	signal ic79_dec2			: std_logic := '0';
@@ -77,11 +107,8 @@ architecture RTL of dd_snd is
 	signal s3807w				: std_logic := '0';
 
 begin
-	-- dummy assignments for now
-	ym0  <= (others => '0');
-	ym1  <= (others => '0');
-	pcm0 <= (others => '0');
-	pcm1 <= (others => '0');
+	ym0 <= (others => '0');
+	ym1 <= (others => '0');
 
 	p_mpu_rst : process(hclk, reset)
 	begin
@@ -91,6 +118,100 @@ begin
 			if rst_ctr /= x"F" then
 				rst_ctr <= rst_ctr + 1;
 			end if;
+		end if;
+	end process;
+
+	-- generate ADPCM clock from mainclock
+	p_clk_ctr : process(hclk, reset)
+	begin
+		if (reset = '1') then
+			clk_ctr <= (others=>'0');
+		elsif rising_edge(hclk) then
+			if clk_ctr /= x"F" then
+				clk_ctr <= clk_ctr + 1;
+			end if;
+		end if;
+	end process;
+
+	clk375k <= clk_ctr(1);
+
+	IC80 : entity work.MSM5205
+	generic map (signed_data => false)
+	port map (
+		s1s2		=> "10",			-- sampling freq: LL=4Khz, LH=6Khz, HL=8Khz, HH=prohibited
+		s4b3b		=> '1',			-- ADPCM data format, H = 4 bit, L = 3 bit
+		di			=> adpd0_di,	-- 4 bit input data
+		do			=> pcm0,			-- 12 bit output data
+		vck		=> vck0,			-- sampling clk out as selected by s1s2
+		reset		=> ad1rst,		-- active high reset
+		xt			=> clk375k		-- 384khz clock input
+	);
+
+	IC81 : entity work.MSM5205
+	generic map (signed_data => false)
+	port map (
+		s1s2		=> "10",			-- sampling freq: LL=4Khz, LH=6Khz, HL=8Khz, HH=prohibited
+		s4b3b		=> '1',			-- ADPCM data format, H = 4 bit, L = 3 bit
+		di			=> adpd1_di,	-- 4 bit input data
+		do			=> pcm1,			-- 12 bit output data
+		vck		=> vck1,			-- sampling clk out as selected by s1s2
+		reset		=> ad2rst,		-- active high reset
+		xt			=> clk375k		-- 384khz clock input
+	);
+
+	adpd0 : entity work.adpdctr
+	port map (
+		clk		=> hclk_n,
+		vck		=> vck0,			-- 375K clock from MSM5205 IC80
+		swd		=> mpu_wr,		-- write enable
+		sdb		=> mpu_do,		-- data bus
+		addr		=> adpd0_addr,	-- 17 bit address bus to external ROM
+		clrctr	=> ad1rst,		-- clear counters
+		setctr	=> s3804w,		-- preset counters
+		setcmp	=> s3802w,		-- set comparators
+		cmpout	=> ad1match		-- comparator output
+	);
+
+	adpd1 : entity work.adpdctr
+	port map (
+		clk		=> hclk_n,
+		vck		=> vck1,			-- 375K clock from MSM5205 IC81
+		swd		=> mpu_wr,		-- write enable
+		sdb		=> mpu_do,		-- data bus
+		addr		=> adpd1_addr,	-- 17 bit address bus to external ROM
+		clrctr	=> ad2rst,		-- clear counters
+		setctr	=> s3805w,		-- preset counters
+		setcmp	=> s3803w,		-- set comparators
+		cmpout	=> ad2match		-- comparator output
+	);
+
+	-- route addresses to external ROMs
+	rom0a <= adpd0_addr(16 downto 1);
+	rom1a <= adpd1_addr(16 downto 1);
+
+	-- demux 8 bit data to 4 bit
+	adpd0_di <= rom0d(3 downto 0) when adpd0_addr(0) = '1' else rom0d(7 downto 4);
+	adpd1_di <= rom1d(3 downto 0) when adpd1_addr(0) = '1' else rom1d(7 downto 4);
+
+	-- latch
+	process
+	begin
+		wait until rising_edge(hclk_n);
+		if s3800w = '1' then
+			ad1rst <= '0';	-- clear
+		elsif s3806w = '1' or ad1match ='1' then
+			ad1rst <= '1'; -- set
+		end if;
+	end process;
+
+	-- latch
+	process
+	begin
+		wait until rising_edge(hclk_n);
+		if s3801w = '1' then
+			ad2rst <= '0';	-- clear
+		elsif s3807w = '1' or ad2match ='1' then
+			ad2rst <= '1'; -- set
 		end if;
 	end process;
 
@@ -129,6 +250,9 @@ begin
 		rom1_do when rom1_ena  = '1' and mpu_rd = '1' else
 		ram_do  when ic79_dec0 = '1' and mpu_rd = '1' else
 		snd_val when ic79_dec2 = '1' and mpu_rd = '1' else
+		"000000" &
+		 ad2rst  &
+		 ad1rst when ic79_dec3 = '1' and mpu_rd = '1' else
 		ym_do   when ic79_dec5 = '1' and mpu_rd = '1' else
 		(others=>'0');
 

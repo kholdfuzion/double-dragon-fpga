@@ -25,6 +25,8 @@ library std;
 
 library ieee;
 	use ieee.std_logic_1164.all;
+	use ieee.std_logic_arith.all;
+	use ieee.std_logic_unsigned.all;
 --	use ieee.numeric_std.all;
 	use ieee.std_logic_textio.all;
 
@@ -38,11 +40,17 @@ architecture behavior of papilio_top_tb is
 	signal CLK_IN    : std_logic := '0';
 
 	--BiDirs
-	signal SRAM_D    : std_logic_vector(15 downto 0) := (others=>'0');
+	signal SRAM_D    : std_logic_vector(15 downto 0);
 	signal PS2CLK1   : std_logic := '1';
 	signal PS2DAT1   : std_logic := '1';
 
 	--Outputs
+	signal SRAM_nCS  : std_logic := '0';
+	signal SRAM_nWE  : std_logic := '0';
+	signal SRAM_nOE  : std_logic := '0';
+	signal SRAM_nBHE : std_logic := '0';
+	signal SRAM_nBLE : std_logic := '0';
+	signal SRAM_A    : std_logic_vector(18 downto 0) := (others=>'0');
 	signal O_LED     : std_logic_vector( 3 downto 0) := (others=>'0');
 	signal O_VIDEO_R : std_logic_vector( 3 downto 0) := (others=>'0');
 	signal O_VIDEO_G : std_logic_vector( 3 downto 0) := (others=>'0');
@@ -66,6 +74,13 @@ begin
 	uut: entity work.PAPILIO_TOP
 	port map (
 		I_RESET   => I_RESET,
+		SRAM_A    => SRAM_A,
+		SRAM_D    => SRAM_D,
+		SRAM_nCS  => SRAM_nCS,
+		SRAM_nWE  => SRAM_nWE,
+		SRAM_nOE  => SRAM_nOE,
+		SRAM_nBHE => SRAM_nBHE,
+		SRAM_nBLE => SRAM_nBLE,
 		O_LED     => O_LED,
 		O_VIDEO_R => O_VIDEO_R,
 		O_VIDEO_G => O_VIDEO_G,
@@ -77,6 +92,14 @@ begin
 		PS2CLK1   => PS2CLK1,
 		PS2DAT1   => PS2DAT1,
 		CLK_IN    => CLK_IN
+	);
+
+	rom0: entity work.rom0
+	port map (
+		CLK  => CLK_IN,
+		ENA  => '1',
+		ADDR => SRAM_A(15 downto 0),
+		DATA => SRAM_D
 	);
 
 	-- Clock process definitions
@@ -103,7 +126,7 @@ begin
 		variable cmd		: character;
 		variable delay		: time;
 		variable parity	: std_logic;
-		variable char		: std_logic_vector(7 downto 0);
+		variable char		: std_logic_vector( 7 downto 0);
 		variable ps2tx		: std_logic_vector(10 downto 0);
 	begin
 
