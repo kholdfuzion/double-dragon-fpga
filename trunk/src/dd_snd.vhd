@@ -36,11 +36,6 @@ entity dd_snd is
 		ym0		: out	std_logic_vector( 9 downto 0);	-- left  channel from IC82
 		ym1		: out	std_logic_vector( 9 downto 0);	-- right channel from IC82
 
-		rom0a		: out	std_logic_vector(15 downto 0);	-- ADPCM ROM0 address
-		rom0d		: in 	std_logic_vector( 7 downto 0);	-- ADPCM ROM0 data
-		rom1a		: out	std_logic_vector(15 downto 0);	-- ADPCM ROM1 address
-		rom1d		: in  std_logic_vector( 7 downto 0);	-- ADPCM ROM1 data
-
 		db			: in	std_logic_vector( 7 downto 0);	-- data bus
 		reset		: in	std_logic;								-- active high reset
 		hclk		: in	std_logic;								-- cpu clock 1.5MHz
@@ -87,6 +82,27 @@ architecture RTL of dd_snd is
 	signal ad2rst				: std_logic := '0';
 	signal ad1match			: std_logic := '0';
 	signal ad2match			: std_logic := '0';
+
+	signal ADPCM0_ena			: std_logic := '0';
+	signal ADPCM1_ena			: std_logic := '0';
+	signal ADPCM2_ena			: std_logic := '0';
+	signal ADPCM3_ena			: std_logic := '0';
+	signal ADPCM4_ena			: std_logic := '0';
+	signal ADPCM5_ena			: std_logic := '0';
+	signal ADPCM6_ena			: std_logic := '0';
+	signal ADPCM7_ena			: std_logic := '0';
+
+	signal ADPCM0_do			: std_logic_vector( 7 downto 0) := (others => '0');
+	signal ADPCM1_do			: std_logic_vector( 7 downto 0) := (others => '0');
+	signal ADPCM2_do			: std_logic_vector( 7 downto 0) := (others => '0');
+	signal ADPCM3_do			: std_logic_vector( 7 downto 0) := (others => '0');
+	signal ADPCM4_do			: std_logic_vector( 7 downto 0) := (others => '0');
+	signal ADPCM5_do			: std_logic_vector( 7 downto 0) := (others => '0');
+	signal ADPCM6_do			: std_logic_vector( 7 downto 0) := (others => '0');
+	signal ADPCM7_do			: std_logic_vector( 7 downto 0) := (others => '0');
+
+	signal rom0d				: std_logic_vector( 7 downto 0) := (others => '0');	-- ADPCM ROM0 data
+	signal rom1d				: std_logic_vector( 7 downto 0) := (others => '0');	-- ADPCM ROM1 data
 
 	signal ic79_dec0			: std_logic := '0';
 --	signal ic79_dec1			: std_logic := '0';
@@ -184,10 +200,6 @@ begin
 		setcmp	=> s3803w,		-- set comparators
 		cmpout	=> ad2match		-- comparator output
 	);
-
-	-- route addresses to external ROMs
-	rom0a <= adpd0_addr(16 downto 1);
-	rom1a <= adpd1_addr(16 downto 1);
 
 	-- demux 8 bit data to 4 bit
 	adpd0_di <= rom0d(3 downto 0) when adpd0_addr(0) = '1' else rom0d(7 downto 4);
@@ -300,22 +312,7 @@ begin
 		pc_out    => open
 	);
 
-	ROM0 : entity work.ROM_21J00
-	port map (
-		CLK  => hclk_n,
-		ENA  => rom0_ena,
-		ADDR => mpu_addr(13 downto 0),
-		DATA => rom0_do
-	);
-
-	ROM1 : entity work.ROM_21J01
-	port map (
-		CLK  => hclk_n,
-		ENA  => rom1_ena,
-		ADDR => mpu_addr(13 downto 0),
-		DATA => rom1_do
-	);
-
+	-- CPU 2KB RAM
 	RAM : entity work.ram_2048_8
 	port map (
 		clk  => hclk_n,
@@ -325,4 +322,43 @@ begin
 		di   => mpu_do,
 		do   => ram_do
 	);
+
+	-- CPU program ROMs
+	ROM0   : entity work.ROM_21J00 port map ( CLK => hclk_n, ENA => rom0_ena, ADDR => mpu_addr(13 downto 0), DATA => rom0_do );
+	ROM1   : entity work.ROM_21J01 port map ( CLK => hclk_n, ENA => rom1_ena, ADDR => mpu_addr(13 downto 0), DATA => rom1_do );
+
+	-- ADPCM samles ROMs
+	ADPCM0 : entity work.ROM_21J60 port map ( CLK => hclk_n, ENA => ADPCM0_ena, ADDR => adpd0_addr(14 downto 1), DATA => ADPCM0_do );
+	ADPCM1 : entity work.ROM_21J61 port map ( CLK => hclk_n, ENA => ADPCM1_ena, ADDR => adpd0_addr(14 downto 1), DATA => ADPCM1_do );
+	ADPCM2 : entity work.ROM_21J62 port map ( CLK => hclk_n, ENA => ADPCM2_ena, ADDR => adpd0_addr(14 downto 1), DATA => ADPCM2_do );
+	ADPCM3 : entity work.ROM_21J63 port map ( CLK => hclk_n, ENA => ADPCM3_ena, ADDR => adpd0_addr(14 downto 1), DATA => ADPCM3_do );
+	ADPCM4 : entity work.ROM_21J70 port map ( CLK => hclk_n, ENA => ADPCM4_ena, ADDR => adpd1_addr(14 downto 1), DATA => ADPCM4_do );
+	ADPCM5 : entity work.ROM_21J71 port map ( CLK => hclk_n, ENA => ADPCM5_ena, ADDR => adpd1_addr(14 downto 1), DATA => ADPCM5_do );
+	ADPCM6 : entity work.ROM_21J72 port map ( CLK => hclk_n, ENA => ADPCM6_ena, ADDR => adpd1_addr(14 downto 1), DATA => ADPCM6_do );
+	ADPCM7 : entity work.ROM_21J73 port map ( CLK => hclk_n, ENA => ADPCM7_ena, ADDR => adpd1_addr(14 downto 1), DATA => ADPCM7_do );
+
+	-- 3 to 8 decoder
+	ADPCM0_ena <= '1' when adpd0_addr(16 downto 15) = "00" else '0';
+	ADPCM1_ena <= '1' when adpd0_addr(16 downto 15) = "01" else '0';
+	ADPCM2_ena <= '1' when adpd0_addr(16 downto 15) = "10" else '0';
+	ADPCM3_ena <= '1' when adpd0_addr(16 downto 15) = "11" else '0';
+	ADPCM4_ena <= '1' when adpd1_addr(16 downto 15) = "00" else '0';
+	ADPCM5_ena <= '1' when adpd1_addr(16 downto 15) = "01" else '0';
+	ADPCM6_ena <= '1' when adpd1_addr(16 downto 15) = "10" else '0';
+	ADPCM7_ena <= '1' when adpd1_addr(16 downto 15) = "11" else '0';
+
+	-- address muxers
+	rom0d <=
+		ADPCM0_do when ADPCM0_ena = '1' else
+		ADPCM1_do when ADPCM1_ena = '1' else
+		ADPCM2_do when ADPCM2_ena = '1' else
+		ADPCM3_do when ADPCM3_ena = '1' else
+		(others=>'0');
+
+	rom1d <=
+		ADPCM4_do when ADPCM4_ena = '1' else
+		ADPCM5_do when ADPCM5_ena = '1' else
+		ADPCM6_do when ADPCM6_ena = '1' else
+		ADPCM7_do when ADPCM7_ena = '1' else
+		(others=>'0');
 end RTL;

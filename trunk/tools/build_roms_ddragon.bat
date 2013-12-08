@@ -36,5 +36,16 @@ REM romgen can't handle 32K ROMs so I manually split ROM file "21j-0-1" in two
 %romgen_path%\romgen %rom_path_src%\21j-0-1.0 ROM_21J00 14 l r e > %rom_path%\ROM_21J00.vhd
 %romgen_path%\romgen %rom_path_src%\21j-0-1.1 ROM_21J01 14 l r e > %rom_path%\ROM_21J01.vhd
 
+REM Similarly with the 64KB ADPCM ROMs "21j-6" and "21j-7", they were split in four
+%romgen_path%\romgen %rom_path_src%\21j-6.0 ROM_21J60 14 l r e > %rom_path%\ROM_21J60.vhd
+%romgen_path%\romgen %rom_path_src%\21j-6.1 ROM_21J61 14 l r e > %rom_path%\ROM_21J61.vhd
+%romgen_path%\romgen %rom_path_src%\21j-6.2 ROM_21J62 14 l r e > %rom_path%\ROM_21J62.vhd
+%romgen_path%\romgen %rom_path_src%\21j-6.3 ROM_21J63 14 l r e > %rom_path%\ROM_21J63.vhd
+
+%romgen_path%\romgen %rom_path_src%\21j-7.0 ROM_21J70 14 l r e > %rom_path%\ROM_21J70.vhd
+%romgen_path%\romgen %rom_path_src%\21j-7.1 ROM_21J71 14 l r e > %rom_path%\ROM_21J71.vhd
+%romgen_path%\romgen %rom_path_src%\21j-7.2 ROM_21J72 14 l r e > %rom_path%\ROM_21J72.vhd
+%romgen_path%\romgen %rom_path_src%\21j-7.3 ROM_21J73 14 l r e > %rom_path%\ROM_21J73.vhd
+
 echo done
 pause

@@ -11,13 +11,13 @@
 -- For full details, see the GNU General Public License at www.gnu.org/licenses
 
 --------------------------------------------------------------------------------
---	Top level targeted for Papilio Plus board, basic h/w specs:
---		Spartan 6 LX9
---		32Mhz xtal oscillator
---		512Kx16 SRAM 10ns access
---		4Mbit serial Flash
+--	Top level targeted for Pipistrello board, basic h/w specs:
+--		Spartan 6 LX45
+--		50Mhz xtal oscillator
+--		32Mx16 LPDDR 200MHz
+--		128Mbit serial Flash
 --
---	adpcm samples stored in external memory
+--	adpcm samples stored in internal FPGA memory
 --	0x00000, 64KB, file "21j-6"
 --	0x10000, 64KB, file "21j-7"
 
@@ -30,28 +30,13 @@ library ieee;
 library unisim;
 	use unisim.vcomponents.all;
 
-entity PAPILIO_TOP is
+entity PIPISTRELLO_TOP is
 	port(
 		I_RESET		: in		std_logic;								-- active high reset
 
-		-- SRAM
-		SRAM_A		: out		std_logic_vector(18 downto 0);	-- SRAM address bus
-		SRAM_D		: in		std_logic_vector(15 downto 0);	-- SRAM data    bus
-		SRAM_nCS		: out		std_logic;								-- SRAM chip    select active low
-		SRAM_nWE		: out		std_logic;								-- SRAM write   enable active low
-		SRAM_nOE		: out		std_logic;								-- SRAM output  enable active low
-		SRAM_nBHE	: out		std_logic;								-- SRAM byte hi enable active low
-		SRAM_nBLE	: out		std_logic;								-- SRAM byte lo enable active low
-
-		-- debugging
-		O_LED			: out		std_logic_vector(3 downto 0);
-
-		-- VGA monitor output
-		O_VIDEO_R	: out		std_logic_vector(3 downto 0);
-		O_VIDEO_G	: out		std_logic_vector(3 downto 0);
-		O_VIDEO_B	: out		std_logic_vector(3 downto 0);
-		O_HSYNC		: out		std_logic;
-		O_VSYNC		: out		std_logic;
+		-- HDMI VGA Video
+		TMDS_P    : out std_logic_vector( 3 downto 0);
+		TMDS_N    : out std_logic_vector( 3 downto 0);
 
 		-- Sound out
 		O_AUDIO_L	: out		std_logic;
@@ -62,16 +47,18 @@ entity PAPILIO_TOP is
 		PS2DAT1		: inout	std_logic;
 
 		-- 32MHz clock
-		CLK_IN		: in		std_logic := '0'						-- System clock 32Mhz
+		CLK_50		: in		std_logic := '0'						-- System clock 32Mhz
 
 	);
-end PAPILIO_TOP;
+end PIPISTRELLO_TOP;
 
-architecture RTL of PAPILIO_TOP is
+architecture RTL of PIPISTRELLO_TOP is
 	signal ps2_codeready		: std_logic := '1';
 	signal ps2_scancode		: std_logic_vector( 9 downto 0) := (others => '0');
 	signal key_val				: std_logic_vector( 7 downto 0) := (others => '0');
 	signal key_strobe			: std_logic := '1';
+
+	signal read_state			: std_logic_vector( 1 downto 0) := (others => '0');
 
 	signal vga_r				: std_logic_vector( 3 downto 0) := (others => '0');
 	signal vga_g				: std_logic_vector( 3 downto 0) := (others => '0');
@@ -79,90 +66,143 @@ architecture RTL of PAPILIO_TOP is
 	signal vga_hs				: std_logic := '1';
 	signal vga_vs				: std_logic := '1';
 
+   signal red_s				: std_logic := '0';
+   signal grn_s				: std_logic := '0';
+   signal blu_s				: std_logic := '0';
+   signal clk_s				: std_logic := '0';
+
 	signal pwm_l				: std_logic := '1';
 	signal pwm_r				: std_logic := '1';
 
 	signal reset				: std_logic := '1';
-	signal dcm_reset			: std_logic := '1';
-	signal dcm_locked			: std_logic := '1';
 	signal rst_ctr				: std_logic_vector( 7 downto 0) := (others => '0');
 	signal hCount				: std_logic_vector(11 downto 0) := (others => '0');
 	signal vCount				: std_logic_vector(11 downto 0) := (others => '0');
 	signal video				: std_logic := '0';
 	signal venable				: std_logic := '0';
 
+   signal clk120M_p			: std_logic := '0';
+   signal clk120M_n			: std_logic := '0';
+   signal clk24M				: std_logic := '0';
+	signal clk12M				: std_logic := '0';
+	signal clk6M				: std_logic := '0';
+	signal clk7M1				: std_logic := '0';
+	signal clk3M57				: std_logic := '0';
+	signal clk1M5				: std_logic := '0';
+
+	signal clkout0				: std_logic := '0';
+	signal clkout1				: std_logic := '0';
+	signal clkout2				: std_logic := '0';
+	signal clkout3				: std_logic := '0';
+	signal clkout4				: std_logic := '0';
+	signal clkout5				: std_logic := '0';
 	signal clkfb				: std_logic := '0';
-	signal clkdiv				: std_logic_vector( 4 downto 0) := (others => '0');
-	signal clkdiv2				: std_logic_vector( 3 downto 0) := (others => '0');
+	signal pll_locked			: std_logic := '0';
+	signal clkdiv				: std_logic_vector( 1 downto 0) := (others => '0');
+	signal clkdiv2				: std_logic_vector( 1 downto 0) := (others => '0');
 
 	signal pcm0					: std_logic_vector(11 downto 0) := (others => '0');
 	signal pcm1					: std_logic_vector(11 downto 0) := (others => '0');
 
-	signal clk3M57				: std_logic := '0';
-
-	signal clk48M				: std_logic := '0';
-	signal clk12M				: std_logic := '0';
-	signal clk1M5				: std_logic := '0';
-
-	signal rom0a				: std_logic_vector(15 downto 0) := (others => '0');
-	signal rom1a				: std_logic_vector(15 downto 0) := (others => '0');
-	signal rom0d				: std_logic_vector( 7 downto 0) := (others => '0');
-	signal rom1d				: std_logic_vector( 7 downto 0) := (others => '0');
-
-	signal read_state			: std_logic_vector( 1 downto 0) := (others => '0');
-
 begin
 --	IO pin assignments
-	O_LED			<= (others=>'0');
-
-	SRAM_nCS		<= '0'; -- always selected
-	SRAM_nWE		<= '1'; -- not written
-	SRAM_nOE		<= '0'; -- output enabled
-	SRAM_nBHE	<= '0'; -- hi byte always enabled
-	SRAM_nBLE	<= '0'; -- lo byte always enabled
-
-	O_VIDEO_R	<= vga_r;
-	O_VIDEO_G	<= vga_g;
-	O_VIDEO_B	<= vga_b;
-	O_HSYNC		<= vga_hs;
-	O_VSYNC		<= vga_vs;
-
 	O_AUDIO_L	<= pwm_l;
 	O_AUDIO_R	<= pwm_r;
 
-	dcm_reset		<= I_RESET;
+	OBUFDS_clk : OBUFDS port map ( O => TMDS_P(3), OB => TMDS_N(3), I => clk_s );
+	OBUFDS_red : OBUFDS port map ( O => TMDS_P(2), OB => TMDS_N(2), I => red_s );
+	OBUFDS_grn : OBUFDS port map ( O => TMDS_P(1), OB => TMDS_N(1), I => grn_s );
+	OBUFDS_blu : OBUFDS port map ( O => TMDS_P(0), OB => TMDS_N(0), I => blu_s );
 
-	vga_g <= video & "100" when venable='1' else (others=>'0');
-	vga_r <= video & "100" when venable='1' else (others=>'0');
-	vga_b <= video & "100" when venable='1' else (others=>'0');
+	inst_dvid: entity work.dvid
+	port map(
+      clk_p     => clk120M_p,
+      clk_n     => clk120M_n, 
+      clk_pixel => clk24M,
+      red_p(  7) => video,
+      red_p(  6 downto 0) => (others => '0'),
+      green_p(7) => video,
+      green_p(6 downto 0) => (others => '0'),
+      blue_p( 7) => video,
+      blue_p( 6 downto 0) => (others => '0'),
+      blank     => not venable,
+      hsync     => vga_hs,
+      vsync     => vga_vs,
+      -- outputs to TMDS drivers
+      red_s     => red_s,
+      green_s   => grn_s,
+      blue_s    => blu_s,
+      clock_s   => clk_s
+   );
 
-	----------------------------------------------
-	-- clock generator, 48MHz from 32MHz
-	----------------------------------------------
-	dcm_sp_inst: DCM_SP
-	generic map(
-		CLKFX_DIVIDE   => 2,
-		CLKFX_MULTIPLY => 3,
-		CLKIN_PERIOD   => 31.25
-
+	-----------------------------------------------
+	-- generate all the system clocks required
+	-----------------------------------------------
+	inst_pll_base : PLL_BASE
+	generic map (
+		BANDWIDTH          => "OPTIMIZED", -- "HIGH", "LOW" or "OPTIMIZED"
+		COMPENSATION       => "SYSTEM_SYNCHRONOUS", -- "SYSTEM_SYNCHRNOUS", "SOURCE_SYNCHRNOUS", "INTERNAL", "EXTERNAL", "DCM2PLL", "PLL2DCM"
+		CLKIN_PERIOD       => 20.00, -- Clock period (ns) of input clock on CLKIN
+		DIVCLK_DIVIDE      => 1,     -- Division factor for all clocks (1 to 52)
+		CLKFBOUT_MULT      => 12,    -- Multiplication factor for all output clocks (1 to 64)
+		CLKFBOUT_PHASE     => 0.0,   -- Phase shift (degrees) of all output clocks
+		REF_JITTER         => 0.100, -- Input reference jitter (0.000 to 0.999 UI%)
+		-- 120Mhz positive
+		CLKOUT0_DIVIDE     => 5,     -- Division factor for CLKOUT2 (1 to 128)
+		CLKOUT0_DUTY_CYCLE => 0.5,   -- Duty cycle for CLKOUT2 (0.01 to 0.99)
+		CLKOUT0_PHASE      => 0.0,   -- Phase shift (degrees) for CLKOUT2 (0.0 to 360.0)
+		-- 120Mhz negative
+		CLKOUT1_DIVIDE     => 5,     -- Division factor for CLKOUT3 (1 to 128)
+		CLKOUT1_DUTY_CYCLE => 0.5,   -- Duty cycle for CLKOUT3 (0.01 to 0.99)
+		CLKOUT1_PHASE      => 180.0, -- Phase shift (degrees) for CLKOUT3 (0.0 to 360.0)
+		-- 24Mhz VGA clock
+		CLKOUT2_DIVIDE     => 25,    -- Division factor for CLKOUT1 (1 to 128)
+		CLKOUT2_DUTY_CYCLE => 0.5,   -- Duty cycle for CLKOUT1 (0.01 to 0.99)
+		CLKOUT2_PHASE      => 0.0,   -- Phase shift (degrees) for CLKOUT1 (0.0 to 360.0)
+		-- 12Mhz
+		CLKOUT3_DIVIDE     => 50,    -- Division factor for CLKOUT0 (1 to 128)
+		CLKOUT3_DUTY_CYCLE => 0.5,   -- Duty cycle for CLKOUT0 (0.01 to 0.99)
+		CLKOUT3_PHASE      => 0.0,   -- Phase shift (degrees) for CLKOUT0 (0.0 to 360.0)
+		-- 7.14MHz (double the YM2151 clock)
+		CLKOUT4_DIVIDE     => 84,    -- Division factor for CLKOUT4 (1 to 128)
+		CLKOUT4_DUTY_CYCLE => 0.5,   -- Duty cycle for CLKOUT4 (0.01 to 0.99)
+		CLKOUT4_PHASE      => 0.0,   -- Phase shift (degrees) for CLKOUT4 (0.0 to 360.0)
+		-- 6M
+		CLKOUT5_DIVIDE     => 100,   -- Division factor for CLKOUT5 (1 to 128)
+		CLKOUT5_DUTY_CYCLE => 0.5,   -- Duty cycle for CLKOUT5 (0.01 to 0.99)
+		CLKOUT5_PHASE      => 0.0    -- Phase shift (degrees) for CLKOUT5 (0.0 to 360.0)
 	)
 	port map (
-		CLKIN			=> CLK_IN,
-		CLKFB			=> clkfb,
-		CLK0			=> clkfb,
-		CLKFX			=> clk48M,
-		LOCKED		=> dcm_locked,
-		RST			=> dcm_reset
+		CLKFBOUT => clkfb,      -- General output feedback signal
+		CLKOUT0  => clkout0,
+		CLKOUT1  => clkout1,
+		CLKOUT2  => clkout2,
+		CLKOUT3  => clkout3,
+		CLKOUT4  => clkout4,
+		CLKOUT5  => clkout5,
+		LOCKED   => pll_locked, -- Active high PLL lock signal
+		CLKFBIN  => clkfb,      -- Clock feedback input
+		CLKIN    => CLK_50,     -- Clock input
+		RST      => I_RESET     -- Asynchronous PLL reset
 	);
+
+	bufg_i0 : bufg port map (I => clkout0,   O =>clk120M_p);
+	bufg_i1 : bufg port map (I => clkout1,   O =>clk120M_n);
+	bufg_i2 : bufg port map (I => clkout2,   O =>clk24M);
+	bufg_i3 : bufg port map (I => clkout3,   O =>clk12M);
+	bufg_i4 : bufg port map (I => clkdiv(1), O =>clk1M5);
+
+	clk7M1 <= clkout4;
+	clk6M  <= clkout5;
 
 	----------------------------------------------
 	-- generate delayed reset once DCM is stable
 	----------------------------------------------
-	p_rst_delay : process(clk48M, dcm_locked)
+	p_rst_delay : process(clk24M, pll_locked)
 	begin
-		if dcm_locked = '0' then
+		if pll_locked = '0' then
 			rst_ctr <= (others=>'0');
-		elsif rising_edge(clk48M) then
+		elsif rising_edge(clk24M) then
 			if rst_ctr < x"80" then
 				rst_ctr <= rst_ctr + 1;
 			end if;
@@ -171,37 +211,26 @@ begin
 	reset <= not rst_ctr(7);
 
 	----------------------------------------------
-	-- generate misc clocks from 48MHz
+	-- generate CPU clock
 	-- allow clock to run ahead of reset deasserting
 	----------------------------------------------
-	clk12M  <= clkdiv(1);
-	clk1M5  <= clkdiv(4);
-
-	p_clk48 : process(clk48M, dcm_locked)
+	p_clk : process(clk6M, pll_locked)
 	begin
-		if (dcm_locked = '0') then
+		if (pll_locked = '0') then
 			clkdiv <= (others=>'0');
-		elsif rising_edge(clk48M) then
+		elsif rising_edge(clk6M) then
 			clkdiv <= clkdiv + 1;
 		end if;
 	end process;
 
 	--------------------------------------------------------------------
-	-- this needs to be 3.579545MHz but we end up with 48M/13=3.69M
-	-- other options would be to divide the external FPGA clock directly
-	-- some typical platform clocks are 32M/9=3.555Mhz or 50M/14=3.571Mhz
+	-- this needs to be 3.579545MHz - we get 7.1428M/2=3.5714M
 	--------------------------------------------------------------------
-	clk3M57  <= clkdiv2(3);
-	p_clk3M58 : process(clk48M, reset)
+	clk3M57  <= clkdiv2(0);
+	p_clk3M58 : process(clk7M1, reset)
 	begin
-		if (reset = '1') then
-			clkdiv2 <= (others=>'0');
-		elsif rising_edge(clk48M) then
-			if clkdiv2 = "1100" then
-				clkdiv2 <= (others=>'0');
-			else
-				clkdiv2 <= clkdiv2 + 1;
-			end if;
+		if rising_edge(clk7M1) then
+			clkdiv2 <= clkdiv2 + 1;
 		end if;
 	end process;
 
@@ -241,12 +270,6 @@ begin
 		ym0   => open,			-- not implemented
 		ym1   => open,			-- not implemented
 
-		-- interface to external ROMs
-		rom0a => rom0a,
-		rom0d => rom0d,
-		rom1a => rom1a,
-		rom1d => rom1d,
-
 		reset => reset,		-- active high reset
 		hclk  => clk1M5,		-- CPU clock 1.5MHz
 		yclk  => clk3M57,		-- FM synth clock (3.579545MHz)
@@ -255,51 +278,15 @@ begin
 	);
 
 	----------------------------------------------
-	-- read external memory simulating two independent
-	-- memories and demux data bus accordingly
-	----------------------------------------------
-	ext_mem : process
-	begin
-		wait until rising_edge(clk1M5);
-		read_state <= read_state + 1;
-		case read_state is
-			-- adpd0 memory address
-			when "00" =>
-				SRAM_A <= "0000" & rom0a(15 downto 1);
-
-			-- demux 16 bit data bus to 8 bit
-			when "01" =>
-				if rom0a(0) = '1' then
-					rom0d <= SRAM_D( 7 downto  0);
-				else
-					rom0d <= SRAM_D(15 downto  8);
-				end if;
-
-			-- adpd1 memory address
-			when "10" =>
-				SRAM_A    <= "0001" & rom1a(15 downto 1);
-
-			-- demux 16 bit data bus to 8 bit
-			when "11" =>
-				if rom1a(0) = '1' then
-					rom1d <= SRAM_D( 7 downto  0);
-				else
-					rom1d <= SRAM_D(15 downto  8);
-				end if;
-			when others => null;
-		end case;
-	end process;
-
-	----------------------------------------------
 	-- video for debugging
 	----------------------------------------------
 	u_hexy : entity work.hexy
 	generic map (
-		yOffset => 296,
-		xOffset => 376
+		yOffset => 320,
+		xOffset => 240
 	)
 	port map (
-		clk			=> clk48M,
+		clk			=> clk24M,
 		vSync			=> vga_vs,
 		hSync			=> vga_hs,
 		vPos			=> vCount,
@@ -312,18 +299,18 @@ begin
 	u_vga : entity work.vga_sync
 	generic map (
 		hA =>  16,
-		hB =>  80,
-		hC => 160,
-		hD => 800,
-		hS => '1',
-		vA =>   1,
+		hB =>  96,
+		hC =>  48,
+		hD => 640,
+		hS => '0',
+		vA =>  11,
 		vB =>   2,
-		vC =>  21,
-		vD => 600,
-		vS => '1'
+		vC =>  31,
+		vD => 480,
+		vS => '0'
 	)
 	port map (
-		i_pixelClock	=> clk48M,
+		i_pixelClock	=> clk24M,
 		o_hCount			=> hCount,
 		o_vCount			=> vCount,
 		o_hSync			=> vga_hs,
