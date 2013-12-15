@@ -30,6 +30,11 @@ library ieee;
 library unisim;
 	use unisim.vcomponents.all;
 
+-- Chip connections to wing
+-- AH15..9  = YM_CLK, GND, YM_IRQ, YM_IC, YM_A0, YM_WR, YM_RD, YM_CS
+-- AL7...4  = CLK, SD, S1, S2
+-- BL0...7  = DB7..0
+
 entity PIPISTRELLO_TOP is
 	port(
 		I_RESET		: in		std_logic;								-- active high reset
@@ -46,8 +51,24 @@ entity PIPISTRELLO_TOP is
 		PS2CLK1		: inout	std_logic;
 		PS2DAT1		: inout	std_logic;
 
+		-- YM2151 chip connections
+		YM_CLK      : out   std_logic; -- clock
+		YM_GND      : out   std_logic; -- isolation
+		YM_IC       : out   std_logic; -- reset active low
+		YM_A0       : out   std_logic; -- address line 0
+		YM_WR       : out   std_logic; -- write active low
+		YM_RD       : out   std_logic; -- read active low
+		YM_CS       : out   std_logic; -- chip select active low
+		YM_IRQ      : in    std_logic; -- interrupt active low
+		YM_DB       : inout std_logic_vector( 7 downto 0);
+
+		I_CLK       : in    std_logic;
+		I_SD        : in    std_logic;
+		I_S1        : in    std_logic;
+		I_S2        : in    std_logic;
+
 		-- 32MHz clock
-		CLK_50		: in		std_logic := '0'						-- System clock 32Mhz
+		CLK_50      : in    std_logic := '0' -- System clock 32Mhz
 
 	);
 end PIPISTRELLO_TOP;
@@ -101,18 +122,41 @@ architecture RTL of PIPISTRELLO_TOP is
 	signal clkdiv				: std_logic_vector( 1 downto 0) := (others => '0');
 	signal clkdiv2				: std_logic_vector( 1 downto 0) := (others => '0');
 
-	signal pcm0					: std_logic_vector(11 downto 0) := (others => '0');
-	signal pcm1					: std_logic_vector(11 downto 0) := (others => '0');
+	signal pcm0					: std_logic_vector(15 downto 0) := (others => '0');
+	signal pcm1					: std_logic_vector(15 downto 0) := (others => '0');
+
+	-- internal YM2151 signals
+	signal ym_ic_int			: std_logic := '0';
+	signal ym_a0_int			: std_logic := '0';
+	signal ym_wr_int			: std_logic := '0';
+	signal ym_rd_int			: std_logic := '0';
+	signal ym_cs_int			: std_logic := '0';
+	signal ym_irq_int			: std_logic := '0';
+	signal ym_dbi_int			: std_logic_vector( 7 downto 0) := (others => '0');
+	signal ym_dbo_int			: std_logic_vector( 7 downto 0) := (others => '0');
+	signal ym3012_clk			: std_logic := '0';
 
 begin
 --	IO pin assignments
-	O_AUDIO_L	<= pwm_l;
-	O_AUDIO_R	<= pwm_r;
-
 	OBUFDS_clk : OBUFDS port map ( O => TMDS_P(3), OB => TMDS_N(3), I => clk_s );
 	OBUFDS_red : OBUFDS port map ( O => TMDS_P(2), OB => TMDS_N(2), I => red_s );
 	OBUFDS_grn : OBUFDS port map ( O => TMDS_P(1), OB => TMDS_N(1), I => grn_s );
 	OBUFDS_blu : OBUFDS port map ( O => TMDS_P(0), OB => TMDS_N(0), I => blu_s );
+
+	O_AUDIO_L  <= pwm_l;
+	O_AUDIO_R  <= pwm_r;
+
+	-- negate some signals to convert internal positive logic to external negative logic
+	YM_CLK     <= clk3M57;
+	YM_GND     <= '0';
+	YM_IC      <= not ym_ic_int;
+	YM_A0      <= ym_a0_int;
+	YM_WR      <= not ym_wr_int;
+	YM_RD      <= not ym_rd_int;
+	YM_CS      <= not ym_cs_int;
+	ym_irq_int <= not YM_IRQ;
+	ym_dbi_int <= YM_DB;
+	YM_DB      <= ym_dbo_int when ym_wr_int = '1' and ym_cs_int = '1' else (others=>'Z');
 
 	inst_dvid: entity work.dvid
 	port map(
@@ -191,6 +235,7 @@ begin
 	bufg_i2 : bufg port map (I => clkout2,   O =>clk24M);
 	bufg_i3 : bufg port map (I => clkout3,   O =>clk12M);
 	bufg_i4 : bufg port map (I => clkdiv(1), O =>clk1M5);
+	bufg_i5 : bufg port map (I => I_CLK,     O =>ym3012_clk);
 
 	clk7M1 <= clkout4;
 	clk6M  <= clkout5;
@@ -242,7 +287,7 @@ begin
 	port map (
 		clk_i  => clk12M,
 		res_i  => reset,
-		dac_i  => pcm0(11 downto 2),
+		dac_i  => pcm0(15 downto 6),
 		dac_o  => pwm_l
 	);
 
@@ -254,7 +299,7 @@ begin
 	port map (
 		clk_i  => clk12M,
 		res_i  => reset,
-		dac_i  => pcm1(11 downto 2),
+		dac_i  => pcm1(15 downto 6),
 		dac_o  => pwm_r
 	);
 
@@ -264,14 +309,28 @@ begin
 	dd_snd : entity work.dd_snd
 	port map (
 		-- two PCM channel outputs
-		pcm0  => pcm0,
-		pcm1  => pcm1,
+--		pcm0    => pcm0,
+--		pcm1    => pcm1,
 		-- two FM channel outputs
-		ym0   => open,			-- not implemented
-		ym1   => open,			-- not implemented
+		ym0     => pcm0,
+		ym1     => pcm1,
 
-		reset => reset,		-- active high reset
-		hclk  => clk1M5,		-- CPU clock 1.5MHz
+		-- YM2151 chip connections
+		ym_ic   => ym_ic_int,
+		ym_a0   => ym_a0_int,
+		ym_wr   => ym_wr_int,
+		ym_rd   => ym_rd_int,
+		ym_cs   => ym_cs_int,
+		ym_irq  => ym_irq_int,
+		ym_dbi  => ym_dbi_int,
+		ym_dbo  => ym_dbo_int,
+		ym_sclk => ym3012_clk,
+		ym_sd   => I_SD,
+		ym_sam1 => I_S1,
+		ym_sam2 => I_S2,
+
+		reset  => reset,		-- active high reset
+		hclk   => clk1M5,		-- CPU clock 1.5MHz
 		yclk  => clk3M57,		-- FM synth clock (3.579545MHz)
 		db    => key_val,		-- sound to play
 		wr_n  => key_strobe	-- latch sound value on rising edge

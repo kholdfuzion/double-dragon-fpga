@@ -31,16 +31,29 @@ library ieee;
 
 entity dd_snd is
 	port(
-		pcm0		: out	std_logic_vector(11 downto 0);	-- samples output 1 from IC80
-		pcm1		: out	std_logic_vector(11 downto 0);	-- samples output 2 from IC81
-		ym0		: out	std_logic_vector( 9 downto 0);	-- left  channel from IC82
-		ym1		: out	std_logic_vector( 9 downto 0);	-- right channel from IC82
+		pcm0    : out	std_logic_vector(11 downto 0);	-- samples output 1 from IC80
+		pcm1    : out	std_logic_vector(11 downto 0);	-- samples output 2 from IC81
+		ym0     : out	std_logic_vector(15 downto 0);	-- left  channel from IC82
+		ym1     : out	std_logic_vector(15 downto 0);	-- right channel from IC82
 
-		db			: in	std_logic_vector( 7 downto 0);	-- data bus
-		reset		: in	std_logic;								-- active high reset
-		hclk		: in	std_logic;								-- cpu clock 1.5MHz
-		yclk		: in	std_logic;								-- YM clock 3.579545MHz
-		wr_n		: in	std_logic								-- active low write
+		ym_ic   : out std_logic;
+		ym_a0   : out std_logic;
+		ym_wr   : out std_logic;
+		ym_rd   : out std_logic;
+		ym_cs   : out std_logic;
+		ym_irq  : in  std_logic;
+		ym_dbi  : in  std_logic_vector( 7 downto 0);
+		ym_dbo  : out std_logic_vector( 7 downto 0);
+		ym_sclk : in  std_logic;
+		ym_sd   : in  std_logic;
+		ym_sam1 : in  std_logic;
+		ym_sam2 : in  std_logic;
+
+		db      : in	std_logic_vector( 7 downto 0);	-- data bus
+		reset   : in	std_logic;								-- active high reset
+		hclk    : in	std_logic;								-- cpu clock 1.5MHz
+		yclk    : in	std_logic;								-- YM clock 3.579545MHz
+		wr_n    : in	std_logic								-- active low write
 	);
 end dd_snd;
 
@@ -72,7 +85,6 @@ architecture RTL of dd_snd is
 	signal rom0_do				: std_logic_vector( 7 downto 0) := (others => '0');
 	signal rom1_do				: std_logic_vector( 7 downto 0) := (others => '0');
 	signal ram_do				: std_logic_vector( 7 downto 0) := (others => '0');
-	signal ym_do				: std_logic_vector( 7 downto 0) := (others => '0');
 
 	signal adpd0_di			: std_logic_vector( 3 downto 0) := (others => '0');
 	signal adpd1_di			: std_logic_vector( 3 downto 0) := (others => '0');
@@ -123,8 +135,13 @@ architecture RTL of dd_snd is
 	signal s3807w				: std_logic := '0';
 
 begin
-	ym0 <= (others => '0');
-	ym1 <= (others => '0');
+	ym_a0    <= mpu_addr(0);
+	ym_ic    <= reset;
+	ym_wr    <= mpu_wr;
+	ym_rd    <= mpu_rd;
+	ym_cs    <= ic79_dec5;
+	ym_dbo   <= mpu_do;
+	mpu_firq <= ym_irq;
 
 	p_mpu_rst : process(hclk, reset)
 	begin
@@ -173,6 +190,18 @@ begin
 		vck		=> vck1,			-- sampling clk out as selected by s1s2
 		reset		=> ad2rst,		-- active high reset
 		xt			=> clk375k		-- 384khz clock input
+	);
+
+	-- IC82 serial DAC
+	IC82 : entity work.ym3012
+	port map (
+		PHI0     => ym_sclk,
+		ICL      => reset,
+		SDATA    => ym_sd,
+		SAM1     => ym_sam1,
+		SAM2     => ym_sam2,
+		CH1      => ym0,
+		Ch2      => ym1
 	);
 
 	adpd0 : entity work.adpdctr
@@ -265,7 +294,7 @@ begin
 		"000000" &
 		 ad2rst  &
 		 ad1rst when ic79_dec3 = '1' and mpu_rd = '1' else
-		ym_do   when ic79_dec5 = '1' and mpu_rd = '1' else
+		ym_dbi  when ic79_dec5 = '1' and mpu_rd = '1' else
 		(others=>'0');
 
 	mpu_wr <= not mpu_rd;
