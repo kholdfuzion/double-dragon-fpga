@@ -122,8 +122,12 @@ architecture RTL of PIPISTRELLO_TOP is
 	signal clkdiv				: std_logic_vector( 1 downto 0) := (others => '0');
 	signal clkdiv2				: std_logic_vector( 1 downto 0) := (others => '0');
 
-	signal pcm0					: std_logic_vector(15 downto 0) := (others => '0');
-	signal pcm1					: std_logic_vector(15 downto 0) := (others => '0');
+	signal pcm0					: std_logic_vector(11 downto 0) := (others => '0');
+	signal pcm1					: std_logic_vector(11 downto 0) := (others => '0');
+	signal ym0					: std_logic_vector(15 downto 0) := (others => '0');
+	signal ym1					: std_logic_vector(15 downto 0) := (others => '0');
+	signal sum0					: std_logic_vector(15 downto 0) := (others => '0');
+	signal sum1					: std_logic_vector(15 downto 0) := (others => '0');
 
 	-- internal YM2151 signals
 	signal ym_ic_int			: std_logic := '0';
@@ -287,7 +291,7 @@ begin
 	port map (
 		clk_i  => clk12M,
 		res_i  => reset,
-		dac_i  => pcm0(15 downto 6),
+		dac_i  => sum0(15 downto 6),
 		dac_o  => pwm_l
 	);
 
@@ -299,9 +303,13 @@ begin
 	port map (
 		clk_i  => clk12M,
 		res_i  => reset,
-		dac_i  => pcm1(15 downto 6),
+		dac_i  => sum1(15 downto 6),
 		dac_o  => pwm_r
 	);
+
+	-- bring up the samples pcm level to match the FM
+	sum0 <= ym0 + (pcm0 & "000");
+	sum1 <= ym1 + (pcm1 & "000");
 
 	----------------------------------------------
 	-- sound module
@@ -309,11 +317,11 @@ begin
 	dd_snd : entity work.dd_snd
 	port map (
 		-- two PCM channel outputs
---		pcm0    => pcm0,
---		pcm1    => pcm1,
+		pcm0    => pcm0,
+		pcm1    => pcm1,
 		-- two FM channel outputs
-		ym0     => pcm0,
-		ym1     => pcm1,
+		ym0     => ym0,
+		ym1     => ym1,
 
 		-- YM2151 chip connections
 		ym_ic   => ym_ic_int,

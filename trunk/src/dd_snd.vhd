@@ -194,6 +194,7 @@ begin
 
 	-- IC82 serial DAC
 	IC82 : entity work.ym3012
+	generic map (signed_data => false)
 	port map (
 		PHI0     => ym_sclk,
 		ICL      => reset,
