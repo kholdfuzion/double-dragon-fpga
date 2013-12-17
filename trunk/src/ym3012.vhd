@@ -33,18 +33,17 @@ library ieee;
 --			+---------+
 --------------------------------------------------------------------------------
 -- Vout = 1/2Vdd + 1/4Vdd(-1 + D9/1 + D8/2 + D7/4 + D6/8 + D5/16 + D4/32 + D3/64 + D2/128 + D1/256 + D0/512 + 1/1024) / 2**N
--- N = /S2*4 + /S1*2 + /S0 where S2=S1=S0=0 is not allowed. Note the negation of S2,S1,S0 !!!
+-- N = /S2*4 + /S1*2 + /S0*1 where S2=S1=S0=0 is not allowed. Note the negation of S2,S1,S0 !!!
 
--- This is a weird ass scheme, here are some calculated sample values
+-- Here are some calculated sample values
 -- D9......D0 where N can be 0 to 6 (7 not allowed)
 -- 0000000000 = -0.9990234375 / 2**N
 -- 0011111111 = -0.5009765625 / 2**N
 -- 0111111111 = -0.0009765625 / 2**N
--- 1000000000 =  0.0          / 2**N
+-- 1000000000 =  0.0009765625 / 2**N
 -- 1011111111 =  0.4990234375 / 2**N
 -- 1111111111 =  0.9990234375 / 2**N
 -- It is apparent that the sign bit D9 has the opposite effect from the expected traditional interpretation
-
 
 --       _                                                                         _______________________
 -- SAM1   |_______________________________________________________________________|                       |__
@@ -103,7 +102,7 @@ begin
 		if (SAM1_last and (not SAM1)) = '1' then 
 			CH2_out <= data_r;
 			exp_r   <= sreg(12 downto 10); -- exponent
-			data_r  <= not sreg(9) & sreg(8 downto 0) & "000000"; -- mantissa
+			data_r  <= not sreg(9) & sreg(8 downto 0) & "100000"; -- mantissa
 		-- else adjust according to (inverted!) exponent
 		elsif (exp_r < 7) then
 			exp_r <= exp_r + 1;
@@ -122,7 +121,7 @@ begin
 		if (SAM2_last and (not SAM2)) = '1' then
 			CH1_out <= data_l;
 			exp_l   <= sreg(12 downto 10); -- exponent
-			data_l  <= not sreg(9) & sreg(8 downto 0) & "000000"; -- mantissa
+			data_l  <= not sreg(9) & sreg(8 downto 0) & "100000"; -- mantissa
 		-- else adjust according to (inverted!) exponent
 		elsif (exp_l < 7) then
 			exp_l <= exp_l + 1;
