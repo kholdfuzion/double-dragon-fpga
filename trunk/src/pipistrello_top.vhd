@@ -33,7 +33,7 @@ library unisim;
 -- Chip connections to wing
 -- AH15..9  = YM_CLK, GND, YM_IRQ, YM_IC, YM_A0, YM_WR, YM_RD, YM_CS
 -- AL7...4  = CLK, SD, S1, S2
--- BL0...7  = DB7..0
+-- BL7...0  = DB7..0
 
 entity PIPISTRELLO_TOP is
 	port(
